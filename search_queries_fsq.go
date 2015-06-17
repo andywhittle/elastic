@@ -17,16 +17,14 @@ type FunctionScoreQuery struct {
 	maxBoost   *float32
 	scoreMode  string
 	boostMode  string
-	filters    []Filter
-	scoreFuncs []ScoreFunction
+	functions  []FunctionScoreQueryFunction
 	minScore   *float32
 }
 
 // NewFunctionScoreQuery creates a new function score query.
 func NewFunctionScoreQuery() FunctionScoreQuery {
 	return FunctionScoreQuery{
-		filters:    make([]Filter, 0),
-		scoreFuncs: make([]ScoreFunction, 0),
+		functions: make([]FunctionScoreQueryFunction, 0),
 	}
 }
 
@@ -43,14 +41,34 @@ func (q FunctionScoreQuery) Filter(filter Filter) FunctionScoreQuery {
 }
 
 func (q FunctionScoreQuery) Add(filter Filter, scoreFunc ScoreFunction) FunctionScoreQuery {
-	q.filters = append(q.filters, filter)
-	q.scoreFuncs = append(q.scoreFuncs, scoreFunc)
+	q.functions = append(
+		q.functions,
+		FunctionScoreQueryFunction{
+			filter: filter,
+			scoreFunction: scoreFunc,
+		},
+	)
 	return q
 }
 
 func (q FunctionScoreQuery) AddScoreFunc(scoreFunc ScoreFunction) FunctionScoreQuery {
-	q.filters = append(q.filters, nil)
-	q.scoreFuncs = append(q.scoreFuncs, scoreFunc)
+	q.functions = append(
+		q.functions,
+		FunctionScoreQueryFunction{
+			scoreFunction: scoreFunc,
+		},
+	)
+	return q
+}
+
+func (q FunctionScoreQuery) AddScoreFuncWithWeight(scoreFunc ScoreFunction, weight Weight) FunctionScoreQuery {
+	q.functions = append(
+		q.functions,
+		FunctionScoreQueryFunction{
+			scoreFunction: scoreFunc,
+			weight: weight,
+		},
+	)
 	return q
 }
 
@@ -91,17 +109,13 @@ func (q FunctionScoreQuery) Source() interface{} {
 		query["filter"] = q.filter.Source()
 	}
 
-	if len(q.filters) == 1 && q.filters[0] == nil {
-		query[q.scoreFuncs[0].Name()] = q.scoreFuncs[0].Source()
+	if len(q.functions) == 1 && q.functions[0].filter == nil {
+		scoreFunc := q.functions[0].scoreFunction
+		query[scoreFunc.Name()] = scoreFunc.Source()
 	} else {
-		funcs := make([]interface{}, len(q.filters))
-		for i, filter := range q.filters {
-			hsh := make(map[string]interface{})
-			if filter != nil {
-				hsh["filter"] = filter.Source()
-			}
-			hsh[q.scoreFuncs[i].Name()] = q.scoreFuncs[i].Source()
-			funcs[i] = hsh
+		funcs := make([]interface{}, len(q.functions))
+		for i, function := range q.functions {
+			funcs[i] = function.Source()
 		}
 		query["functions"] = funcs
 	}
